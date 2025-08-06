@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Corporate Commute Companion</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <style>
+        /* Base styles */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+        .view-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 1.25rem;
+        }
+        .app-view {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 1.25rem;
+        }
+        .page-container {
+            position: relative;
+            width: 100%;
+            max-width: 420px;
+            background-color: #ffffff;
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            padding: 1.5rem;
+            margin-top: 20px;
+            margin-bottom: 20px;
+        }
+        @media (min-width: 768px) {
+            .page-container {
+                max-width: 896px;
+                padding: 2rem;
+            }
+        }
+        @media (min-width: 1024px) {
+            .page-container {
+                max-width: 1024px;
+            }
+        }
+        .login-container { max-width: 400px; width: 100%; }
+        .card { background-color: #f0f4f8; border-radius: 1rem; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06); }
+        .driver-photo { width: 72px; height: 72px; border-radius: 9999px; object-fit: cover; border: 2px solid #3b82f6; }
+        .passenger-photo { width: 48px; height: 48px; border-radius: 9999px; object-fit: cover; }
+        .message-box { padding: 0.75rem 1rem; border-radius: 0.5rem; margin-top: 1rem; font-size: 0.9rem; word-wrap: break-word; display: none; background-color: #eff6ff; border-left: 4px solid #3b82f6; color: #1e3a8a; }
+        .smart-message-area { display: none; background-color: #ecfdf5; border-left: 4px solid #10b981; color: #065f46; padding: 0.75rem 1rem; border-radius: 0.5rem; margin-top: 1rem; font-size: 0.9rem; }
+        .menu-item { background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 1rem; padding: 1.5rem; text-align: center; transition: all 0.2s ease-in-out; cursor: pointer; }
+        .menu-item:hover { transform: translateY(-5px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.07), 0 4px 6px -2px rgba(0, 0, 0, 0.05); border-color: #3b82f6; }
+        
+        /* Map and Modal Styles */
+        #map-preview, #live-map { height: 100%; width: 100%; z-index: 10; border-radius: 0.75rem;}
+        .map-preview-container { cursor: pointer; position: relative; border-radius: 0.75rem; overflow: hidden; width: 100%; height: 200px; }
+        .live-tracking-page-container { position: fixed; top: 0; left: 0; right: 0; bottom: 0; width: 100vw; height: 100vh; max-width: 100vw; z-index: 100; margin: 0; padding: 0; border-radius: 0; }
+        .leaflet-pane { z-index: 10; } /* Ensure map tiles are below controls */
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center; z-index: 110; }
+        .modal-content { background-color: white; padding: 2rem; border-radius: 1.5rem; width: 90%; max-width: 400px; z-index: 120; }
+        .custom-icon { text-align: center; line-height: 30px; font-size: 24px; }
+        
+        /* UI Bug Fix: Prevents map zoom controls from overlapping custom buttons */
+        .leaflet-top.leaflet-left {
+            margin-top: 70px;
+        }
+    </style>
+</head>
+<body class="view-container">
+
+    <div id="login-page" class="login-container">
+        <div class="bg-white p-8 rounded-2xl shadow-lg w-full">
+            <div class="flex items-center mb-6"><svg class="h-6 w-6 mr-2" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg"><path d="M10 0H0V10H10V0Z" fill="#f25022"></path><path d="M21 0H11V10H21V0Z" fill="#7fba00"></path><path d="M10 11H0V21H10V11Z" fill="#00a4ef"></path><path d="M21 11H11V21H21V11Z" fill="#ffb900"></path></svg><span class="font-semibold text-gray-600">Microsoft</span></div>
+            <h2 class="text-2xl font-bold text-gray-800 mb-2">Sign in</h2>
+            <form id="login-form"><div class="mb-4"><input type="email" id="email" class="w-full px-4 py-3 border-b-2 border-gray-300 focus:outline-none focus:border-blue-500 transition" placeholder="john.doe@example.com" required></div><p class="text-sm text-gray-500 mb-4">No account? <a href="#" class="text-blue-600 hover:underline">Create one!</a></p><p id="login-error" class="text-red-500 text-xs italic mb-4 hidden"></p><div class="flex justify-end"><button type="submit" class="bg-blue-600 text-white py-2 px-6 rounded-md font-semibold hover:bg-blue-700 transition duration-300 ease-in-out shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Next</button></div></form>
+        </div>
+    </div>
+    
+    <div id="profile-menu-template" class="hidden">
+        <button class="profile-menu-button absolute top-4 right-4 md:top-6 md:right-6 text-gray-600 hover:text-gray-800 z-20">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 bg-gray-100 rounded-full p-1" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" /></svg>
+        </button>
+        <div class="profile-menu-dropdown hidden absolute top-14 right-4 md:top-16 md:right-6 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-30">
+            <a href="#" class="profile-btn block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Profile</a>
+            <a href="#" class="settings-btn block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Settings</a>
+            <a href="#" class="logout-btn block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Logout</a>
+        </div>
+    </div>
+    
+    <div id="menu-page" class="page-container hidden">
+        <div class="text-center mb-8"><h1 class="text-3xl font-bold text-gray-800">Main Menu</h1><p class="text-gray-500 mt-2">Welcome! Please select an option.</p></div>
+        <div id="menu-page-message-box" class="message-box hidden"></div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
+            <button id="track-cab-btn" class="menu-item"><div class="text-4xl">📍</div><h3 class="text-lg font-semibold mt-2">Track My Cab</h3><p class="text-sm text-gray-500">View live trip status</p></button>
+            <button id="schedule-ride-btn" class="menu-item"><div class="text-4xl">📅</div><h3 class="text-lg font-semibold mt-2">Book Cab</h3><p class="text-sm text-gray-500">Book a shift or ad-hoc trip</p></button>
+            <button id="my-bookings-btn" class="menu-item"><div class="text-4xl">🗓️</div><h3 class="text-lg font-semibold mt-2">My Bookings</h3><p class="text-sm text-gray-500">View upcoming rides</p></button>
+            <button id="ride-history-btn" class="menu-item"><div class="text-4xl">📜</div><h3 class="text-lg font-semibold mt-2">Ride History</h3><p class="text-sm text-gray-500">Review past commutes</p></button>
+            <button id="support-btn" class="menu-item"><div class="text-4xl">❓</div><h3 class="text-lg font-semibold mt-2">Help & Support</h3><p class="text-sm text-gray-500">Get assistance</p></button>
+        </div>
+    </div>
+    
+    <div id="booking-type-page" class="page-container hidden">
+        <button class="back-to-menu-btn absolute top-4 left-4 md:top-6 md:left-6 text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 z-10"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>Menu</button>
+        <div class="text-center mt-8 md:mt-0 mb-8"><h1 class="text-3xl font-bold text-gray-800">Choose Booking Type</h1><p class="text-gray-500 mt-2">How would you like to schedule your ride?</p></div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <button id="shift-booking-btn" class="menu-item"><div class="text-4xl">🗓️</div><h3 class="text-lg font-semibold mt-2">Shift Cab Booking</h3><p class="text-sm text-gray-500">Book for the whole upcoming week.</p></button>
+            <button id="adhoc-booking-btn" class="menu-item"><div class="text-4xl">🎟️</div><h3 class="text-lg font-semibold mt-2">Ad-hoc Booking</h3><p class="text-sm text-gray-500">Book a one-way trip for specific dates.</p></button>
+        </div>
+    </div>
+
+    <div id="app-container" class="page-container hidden">
+        <button class="back-to-menu-btn absolute top-4 left-4 md:top-6 md:left-6 text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 z-10"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>Menu</button>
+        <div class="mt-8 md:mt-0 mb-6 md:mb-8 text-center"><h1 class="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-800 mb-1">Corporate Commute Companion</h1><p class="text-lg font-semibold text-indigo-600">Current Trip: Shift Out</p></div>
+        <div class="grid grid-cols-1 md:grid-cols-2 md:gap-x-8 lg:gap-x-12">
+            <div class="flex flex-col"><div class="mb-6"><h2 class="text-lg font-semibold text-gray-700 mb-3">Driver & Cab Details</h2><div class="card p-4 flex items-center"><img src="https://placehold.co/72x72/8be9fd/ffffff?text=👨‍✈️" alt="Driver Photo" class="driver-photo mr-4 shadow-md flex-shrink-0"><div><h3 class="text-xl font-semibold text-gray-700">Raj Kumar</h3><p class="text-gray-600 text-sm">📞 +91 98765 43210</p><p class="text-gray-600 text-sm">🚗 Maruti Suzuki Dzire (HR26 AB 1234)</p></div></div></div><div class="mb-6"><h2 class="text-lg font-semibold text-gray-700 mb-3">Live Trip Status</h2><div class="card p-0"><div id="map-preview-container" class="map-preview-container"><div id="map-preview"></div><div class="absolute top-0 left-0 w-full h-full bg-black bg-opacity-20 flex justify-center items-center text-white font-bold pointer-events-none z-20">Click to expand</div></div><div class="p-4"><div class="flex items-center justify-between mb-2"><p class="text-gray-600 font-medium">ETA:</p><p class="text-blue-600 font-bold text-lg">10 mins</p></div><div id="aiStatusUpdate" class="message-box bg-blue-50 border-blue-600 text-blue-800">Heavy traffic near Cyber Hub. Expect a slight delay.</div></div></div></div></div>
+            <div class="flex flex-col"><div class="mb-6"><h2 class="text-lg font-semibold text-gray-700 mb-3">Your Co-Passengers</h2><div class="card p-4"><div class="flex items-center mb-4"><img src="https://placehold.co/48x48/fbcfe8/be185d?text=👩" alt="Priya Sharma" class="passenger-photo mr-4 shadow-sm flex-shrink-0"><div><p class="text-gray-700 font-medium">Priya Sharma</p><p class="text-gray-500 text-sm">Drop-off: Sector 44</p></div></div><div class="flex items-center mb-4"><img src="https://placehold.co/48x48/bfdbfe/1d4ed8?text=👨" alt="Amit Singh" class="passenger-photo mr-4 shadow-sm flex-shrink-0"><div><p class="text-gray-700 font-medium">Amit Singh</p><p class="text-gray-500 text-sm">Drop-off: DLF Phase 3</p></div></div><div class="flex items-center"><img src="https://placehold.co/48x48/d8b4fe/7e22ce?text=👧" alt="Neha Gupta" class="passenger-photo mr-4 shadow-sm flex-shrink-0"><div><p class="text-gray-700 font-medium">Neha Gupta</p><p class="text-gray-500 text-sm">Drop-off: Udyog Vihar</p></div></div></div></div><div class="mb-6"><h2 class="text-lg font-semibold text-gray-700 mb-3">Tools & Communication</h2><div class="card p-4"><h3 class="text-md font-semibold text-gray-700 mb-3">Direct Contact</h3><div class="grid grid-cols-2 gap-4 mb-6"><button id="callDriverBtn" class="bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition duration-300 ease-in-out shadow-md text-sm">📞 Call Driver</button><button id="messageDriverBtn" class="bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition duration-300 ease-in-out shadow-md text-sm">💬 Message</button></div><h3 class="text-md font-semibold text-gray-700 mb-3">AI-Powered Smart Messages</h3><div class="grid grid-cols-1 sm:grid-cols-2 gap-3"><button id="smartMsgLateBtn" class="bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 transition duration-300 ease-in-out shadow-md text-sm">⏰ Running Late</button><button id="smartMsgLocationBtn" class="bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 transition duration-300 ease-in-out shadow-md text-sm">📍 Share Location</button></div><div id="smartMessageOutput" class="smart-message-area mt-4"></div><div id="actionMessageBox" class="message-box bg-green-50 border-green-600 text-green-800 mt-4"></div></div></div></div>
+        </div>
+    </div>
+
+    <div id="shift-booking-page" class="page-container hidden">
+        <button class="back-to-booking-type-btn absolute top-4 left-4 md:top-6 md:left-6 text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 z-10"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>Back</button>
+        <div class="text-center mt-8 md:mt-0 mb-8"><h1 class="text-3xl font-bold text-gray-800">Shift Cab Booking</h1><p class="text-gray-500 mt-2">Set your schedule for the upcoming week.</p></div>
+        <div class="max-w-xl mx-auto"><form id="shift-booking-form">
+            <div class="bg-blue-100 text-blue-800 font-semibold text-center p-3 rounded-lg mb-6">Booking for week: <span id="week-range-display"></span></div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div><label class="block text-gray-700 text-sm font-bold mb-2" for="shift-in-time">Shift In Time (Home to Office)</label><input type="time" id="shift-in-time" value="09:00" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"></div>
+                <div><label class="block text-gray-700 text-sm font-bold mb-2" for="shift-out-time">Shift Out Time (Office to Home)</label><input type="time" id="shift-out-time" value="18:00" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"></div>
+            </div>
+            <div class="flex items-center justify-end"><button type="submit" class="w-full md:w-auto bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline hover:bg-blue-700">Confirm Weekly Schedule</button></div>
+        </form><div id="shiftActionMessageBox" class="message-box bg-green-50 border-green-600 text-green-800 mt-6"></div></div>
+    </div>
+    
+    <div id="adhoc-booking-page" class="page-container hidden">
+        <button class="back-to-booking-type-btn absolute top-4 left-4 md:top-6 md:left-6 text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 z-10"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>Back</button>
+        <div class="text-center mt-8 md:mt-0 mb-8"><h1 class="text-3xl font-bold text-gray-800">Ad-hoc Booking</h1><p class="text-gray-500 mt-2">Book a one-way trip for one or more dates.</p></div>
+        <div class="max-w-xl mx-auto"><form id="adhoc-booking-form">
+            <div class="mb-4"><label class="block text-gray-700 text-sm font-bold mb-2">Shift Type</label><div class="flex rounded-lg shadow-sm" id="adhoc-shift-selector"><label class="w-full text-center p-2 border rounded-l-lg cursor-pointer"><input type="radio" name="adhoc-shift-type" value="out" class="sr-only" checked><span class="shift-label">Shift Out</span></label><label class="w-full text-center p-2 border-t border-b border-r rounded-r-lg cursor-pointer"><input type="radio" name="adhoc-shift-type" value="in" class="sr-only"><span class="shift-label">Shift In</span></label></div></div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div class="mb-4 md:mb-0"><label class="block text-gray-700 text-sm font-bold mb-2" for="adhoc-time">Time</label><input type="time" id="adhoc-time" value="18:00" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"></div>
+                <div><label class="block text-gray-700 text-sm font-bold mb-2" for="adhoc-date">Date</label><div class="flex gap-2"><input type="date" id="adhoc-date" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"><button type="button" id="add-date-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-3 rounded focus:outline-none focus:shadow-outline">Add</button></div></div>
+            </div>
+            <div id="selected-dates-container" class="mb-6 space-y-2"></div>
+            <div class="flex items-center justify-end"><button type="submit" class="w-full md:w-auto bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline hover:bg-blue-700">Confirm Ad-hoc Booking(s)</button></div>
+        </form><div id="adhocActionMessageBox" class="message-box bg-green-50 border-green-600 text-green-800 mt-6"></div></div>
+    </div>
+
+
+     <div id="bookings-page" class="page-container hidden">
+        <button class="back-to-menu-btn absolute top-4 left-4 md:top-6 md:left-6 text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 z-10"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>Menu</button>
+        <div class="text-center mt-8 md:mt-0 mb-8"><h1 class="text-3xl font-bold text-gray-800">My Bookings</h1><p class="text-gray-500 mt-2">Your upcoming scheduled rides.</p></div>
+        <div id="bookings-list-container" class="space-y-5">
+            </div>
+    </div>
+
+    <div id="ride-history-page" class="page-container hidden">
+        <button class="back-to-menu-btn absolute top-4 left-4 md:top-6 md:left-6 text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 z-10"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>Menu</button>
+        <div class="text-center mt-8 md:mt-0 mb-8"><h1 class="text-3xl font-bold text-gray-800">Ride History</h1><p class="text-gray-500 mt-2">Your past commutes at a glance.</p></div>
+        <div class="space-y-4"><div class="card p-4 flex justify-between items-center"><div class="flex items-center"><div class="text-2xl mr-4">🚗</div><div><p class="font-semibold">02 Aug 2025 <span class="text-xs font-bold py-1 px-2 rounded-full bg-blue-100 text-blue-800">Shift Out</span></p><p class="text-sm text-gray-600">Office → Home</p><p class="text-xs text-gray-500">Driver: Suresh Gupta</p></div></div></div><div class="card p-4 flex justify-between items-center"><div class="flex items-center"><div class="text-2xl mr-4">🚗</div><div><p class="font-semibold">02 Aug 2025 <span class="text-xs font-bold py-1 px-2 rounded-full bg-green-100 text-green-800">Shift In</span></p><p class="text-sm text-gray-600">Home → Office</p><p class="text-xs text-gray-500">Driver: Amit Kumar</p></div></div></div><div class="card p-4 flex justify-between items-center"><div class="flex items-center"><div class="text-2xl mr-4">🚗</div><div><p class="font-semibold">01 Aug 2025 <span class="text-xs font-bold py-1 px-2 rounded-full bg-blue-100 text-blue-800">Shift Out</span></p><p class="text-sm text-gray-600">Office → Home</p><p class="text-xs text-gray-500">Driver: Priya Singh</p></div></div></div></div>
+    </div>
+    
+    <div id="support-page" class="page-container hidden">
+        <button class="back-to-menu-btn absolute top-4 left-4 md:top-6 md:left-6 text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 z-10"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>Menu</button>
+        <div class="text-center mt-8 md:mt-0 mb-8"><h1 class="text-3xl font-bold text-gray-800">Help & Support</h1><p class="text-gray-500 mt-2">How can we help you today?</p></div>
+        <div class="space-y-4 mb-8">
+            <h3 class="text-xl font-semibold text-gray-700">Frequently Asked Questions</h3>
+            <details class="bg-gray-50 p-3 rounded-lg"><summary class="font-semibold flex justify-between items-center">How is my ETA calculated?<span class="text-blue-500 text-xl font-bold">+</span></summary><p class="mt-2 text-sm text-gray-600">Your Estimated Time of Arrival (ETA) is calculated in real-time based on current traffic conditions, vehicle speed, and the distance to your destination.</p></details>
+            <details class="bg-gray-50 p-3 rounded-lg"><summary class="font-semibold flex justify-between items-center">Can I change my drop-off location?<span class="text-blue-500 text-xl font-bold">+</span></summary><p class="mt-2 text-sm text-gray-600">For corporate rides, the drop-off location is fixed. Please contact your transport admin for any changes to your designated route.</p></details>
+            <details class="bg-gray-50 p-3 rounded-lg"><summary class="font-semibold flex justify-between items-center">What if I miss my cab?<span class="text-blue-500 text-xl font-bold">+</span></summary><p class="mt-2 text-sm text-gray-600">We recommend using the "Running Late" smart message to inform the driver. Cabs can typically wait for 5 minutes before the ride is marked as a no-show.</p></details>
+        </div>
+        <div>
+            <h3 class="text-xl font-semibold text-gray-700 mb-3">Contact Support</h3>
+            <div class="card p-4"><p class="mb-2"><strong>Email:</strong> <a href="mailto:support@commute.corp" class="text-blue-600">support@commute.corp</a></p><p><strong>Phone:</strong> <a href="tel:18001234567" class="text-blue-600">1800-123-4567</a> (24/7 Helpline)</p></div>
+        </div>
+    </div>
+    
+    <div id="profile-page" class="page-container hidden">
+        <button class="back-to-menu-btn absolute top-4 left-4 md:top-6 md:left-6 text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 z-10"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>Menu</button>
+        <div class="text-center mt-8 md:mt-0 mb-8"><h1 class="text-3xl font-bold text-gray-800">My Profile</h1><p class="text-gray-500 mt-2">Manage your personal and commute information.</p></div>
+        <div class="max-w-xl mx-auto">
+            <form id="profile-form" class="space-y-6">
+                 <div class="card"><h3 class="font-semibold text-xl text-gray-800 mb-4 border-b pb-2">Personal Information</h3><div class="space-y-4"><div><label class="block text-gray-700 text-sm font-bold mb-2" for="profile-name">Full Name</label><input type="text" id="profile-name" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"></div><div><label class="block text-gray-700 text-sm font-bold mb-2" for="profile-email">Email</label><input type="email" id="profile-email" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline bg-gray-200" disabled></div><div><label class="block text-gray-700 text-sm font-bold mb-2" for="profile-mobile">Mobile Number</label><input type="tel" id="profile-mobile" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" required pattern="[6-9]{1}[0-9]{9}" title="Please enter a valid 10-digit Indian mobile number."></div><div><label class="block text-gray-700 text-sm font-bold mb-2" for="profile-emergency-name">Emergency Contact Name</label><input type="text" id="profile-emergency-name" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"></div><div><label class="block text-gray-700 text-sm font-bold mb-2" for="profile-emergency-phone">Emergency Contact Phone</label><input type="tel" id="profile-emergency-phone" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" pattern="[6-9]{1}[0-9]{9}" title="Please enter a valid 10-digit Indian mobile number."></div></div></div>
+
+                <div class="card"><h3 class="font-semibold text-xl text-gray-800 mb-4 border-b pb-2">Home Details</h3><div class="space-y-4"><div><label class="block text-gray-700 text-sm font-bold mb-2" for="profile-home-address">Full Home Address</label><textarea id="profile-home-address" rows="3" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" required></textarea></div><div><label class="block text-gray-700 text-sm font-bold mb-2" for="profile-home-city">City</label><select id="profile-home-city" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"></select></div><div><label class="block text-gray-700 text-sm font-bold mb-2" for="profile-home-nodal">Nodal Point (for Pickup/Drop)</label><select id="profile-home-nodal" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"></select></div><div><label class="block text-gray-700 text-sm font-bold mb-2">Exact Home Location</label><div class="flex gap-2"><input type="text" id="profile-home-map" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 bg-gray-200 leading-tight focus:outline-none" placeholder="Use map to set location" disabled><button type="button" id="use-map-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 rounded focus:outline-none focus:shadow-outline">Map</button></div></div></div></div>
+                
+                <div class="card"><h3 class="font-semibold text-xl text-gray-800 mb-4 border-b pb-2">Office Details</h3><div class="space-y-4"><div><label class="block text-gray-700 text-sm font-bold mb-2" for="profile-office-city">City</label><select id="profile-office-city" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"></select></div><div><label class="block text-gray-700 text-sm font-bold mb-2" for="profile-office-building">Building / Campus (Nodal Point)</label><select id="profile-office-building" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"></select></div></div></div>
+
+                <div class="flex items-center justify-end"><button type="submit" class="bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline hover:bg-blue-700">Save Changes</button></div>
+            </form>
+            <div id="profileActionMessageBox" class="message-box bg-green-50 border-green-600 text-green-800 mt-6"></div>
+        </div>
+    </div>
+    
+    <div id="edit-booking-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Edit Booking</h2>
+            <p class="mb-2">Booking for: <strong id="edit-booking-date"></strong></p>
+            <p class="mb-4">Shift Type: <strong id="edit-booking-shift-type"></strong></p>
+            <form id="edit-booking-form">
+                <input type="hidden" id="edit-booking-id">
+                <div>
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="edit-booking-time">New Time</label>
+                    <input type="time" id="edit-booking-time" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                </div>
+                <div class="flex justify-end gap-4 mt-6">
+                    <button type="button" id="close-modal-btn" class="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline hover:bg-gray-300">Cancel</button>
+                    <button type="submit" class="bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline hover:bg-blue-700">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+     <div id="confirm-cancel-modal" class="modal-overlay hidden">
+        <div class="modal-content text-center">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Confirm Cancellation</h2>
+            <p class="mb-6">Are you sure you want to cancel this booking?</p>
+            <div class="flex justify-center gap-4">
+                <button id="confirm-cancel-no" class="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline hover:bg-gray-300">No, Keep It</button>
+                <button id="confirm-cancel-yes" class="bg-red-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline hover:bg-red-700">Yes, Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="location-picker-modal" class="modal-overlay hidden">
+        <div class="modal-content" style="width: 95%; max-width: 800px; height: 90vh;">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Select Home Location</h2>
+            <p class="text-gray-600 mb-4">Click on the map to place a marker or drag the existing marker to your exact home location.</p>
+            <div id="location-picker-map" style="height: calc(100% - 150px); border-radius: 1rem;"></div>
+            <div class="flex justify-end gap-4 mt-6">
+                <button type="button" id="close-location-modal-btn" class="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline hover:bg-gray-300">Cancel</button>
+                <button type="button" id="confirm-location-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline hover:bg-blue-700">Confirm Location</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="live-tracking-page" class="page-container live-tracking-page-container hidden">
+        <button id="back-to-dashboard-btn" class="absolute top-4 left-4 text-white bg-blue-600 hover:bg-blue-700 font-semibold flex items-center gap-1 z-20 py-2 px-3 rounded-lg shadow-lg">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
+            Back to Dashboard
+        </button>
+        <div id="live-map" class="h-full w-full"></div>
+    </div>
+    
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script>
+        // This script is designed as a single-file prototype.
+        // For a production environment, the Tailwind Play CDN would be replaced with a compiled CSS file,
+        // and this JavaScript would be bundled and minified.
+        document.addEventListener('DOMContentLoaded', () => {
+        
+            // --- App State & Data Persistence ---
+            let userBookings = [];
+            let userProfile = {};
+            const defaultProfile = {
+                name: "John Doe", email: "john.doe@example.com", mobile: "9876543210",
+                emergency: { name: "Jane Doe", phone: "9876543211" },
+                homeAddress: "A-123, Park View Apartments, Gurugram",
+                home: { city: "Gurugram", nodalPoint: "Sector 54 Metro Station", coords: [28.4345, 77.0995] },
+                office: { city: "Gurugram", building: "Cyber Hub, Building 10", coords: [28.4965, 77.0885] },
+                homeMapLocation: ""
+            };
+
+            const homeNodalPointsData = { "Gurugram": ["Sector 54 Metro Station", "Suncity Business Tower", "DLF Phase 3 Metro", "Ambience Mall", "Omaxe Mall", "Vatika Business Park"], "Bengaluru": ["EGL Campus", "Sony World Signal", "ITPL Main Gate"], "Pune": ["Infosys Circle", "Wipro Circle"], "Hyderabad": ["Cyber Towers", "Inorbit Mall"] };
+            const officeLocations = { "Gurugram": ["Cyber Hub, Building 10", "Unitech Infospace", "Golf Course Road Campus"], "Bengaluru": ["EGL, Koramangala", "Manyata Tech Park"], "Pune": ["Hinjewadi Phase 1", "Magarpatta City"], "Hyderabad": ["HITEC City, Madhapur"] };
+
+            const APP_PREFIX = 'corpCommuteApp_';
+            function saveData() {
+                localStorage.setItem(`${APP_PREFIX}userProfile`, JSON.stringify(userProfile));
+                // Compatibility Fix: Replaced object spread with Object.assign for broader browser support.
+                const bookingsToSave = userBookings.map(b => Object.assign({}, b, { date: b.date.toISOString() }));
+                localStorage.setItem(`${APP_PREFIX}userBookings`, JSON.stringify(bookingsToSave));
+            }
+
+            function loadData() {
+                const savedProfile = localStorage.getItem(`${APP_PREFIX}userProfile`);
+                userProfile = savedProfile ? JSON.parse(savedProfile) : JSON.parse(JSON.stringify(defaultProfile));
+                
+                const savedBookings = localStorage.getItem(`${APP_PREFIX}userBookings`);
+                userBookings = savedBookings ? JSON.parse(savedBookings).map(b => Object.assign({}, b, { date: new Date(b.date) })) : [];
+            }
+
+            // --- Map & Global Variables ---
+            let mapPreview, liveMap, cabMarkerPreview, cabMarkerLive, simulationInterval = null;
+            let locationMap, locationMarker;
+            
+            // --- DOM Element Cache ---
+            const body = document.querySelector('body');
+            const allPages = ['menu-page', 'app-container', 'booking-type-page', 'shift-booking-page', 'adhoc-booking-page', 'ride-history-page', 'support-page', 'bookings-page', 'profile-page', 'live-tracking-page'].map(id => document.getElementById(id));
+            const loginPage = document.getElementById('login-page');
+            const loginForm = document.getElementById('login-form');
+            const emailInput = document.getElementById('email');
+            const shiftBookingForm = document.getElementById('shift-booking-form');
+            const adhocBookingForm = document.getElementById('adhoc-booking-form');
+            const profileForm = document.getElementById('profile-form');
+            const adhocDateInput = document.getElementById('adhoc-date');
+            const adhocTimeInput = document.getElementById('adhoc-time');
+            const profileMenuTemplate = document.getElementById('profile-menu-template');
+            const editModal = document.getElementById('edit-booking-modal');
+            const confirmCancelModal = document.getElementById('confirm-cancel-modal');
+            const locationPickerModal = document.getElementById('location-picker-modal');
+            const smartMessageOutput = document.getElementById('smartMessageOutput');
+            const menuPageMessageBox = document.getElementById('menu-page-message-box');
+
+            // --- Initialization & Page Flow ---
+            function showPage(pageId) {
+                allPages.forEach(page => page && page.classList.add('hidden'));
+                loginPage.classList.add('hidden');
+                const pageToShow = document.getElementById(pageId);
+                if (pageToShow) pageToShow.classList.remove('hidden');
+                
+                if (pageId === 'profile-page') populateProfileForm();
+                if (pageId === 'bookings-page') renderMyBookings();
+                
+                if (pageId === 'app-container' && mapPreview) { setTimeout(() => mapPreview.invalidateSize(), 100); }
+                if (pageId === 'live-tracking-page') { setTimeout(initLiveMap, 100); } 
+                else { stopCabSimulation(); }
+
+                document.querySelectorAll('.profile-menu-dropdown').forEach(dd => dd.classList.add('hidden'));
+            }
+
+            function initializeApp() {
+                loadData();
+                const loggedInUser = localStorage.getItem(`${APP_PREFIX}userProfile`);
+                if (loggedInUser) {
+                    allPages.forEach(p => injectProfileMenu(p));
+                    showPage('menu-page');
+                    body.classList.remove('view-container');
+                    body.classList.add('app-view');
+                    initMapPreview();
+                    setTodayDateForAdhoc();
+                } else {
+                    showPage('login-page');
+                }
+            }
+
+            // --- UI Components & User Feedback ---
+            function showMessage(element, message, isError = false) { 
+                if(!element) return; 
+                element.textContent = message; 
+                element.style.display = 'block'; 
+                element.className = isError 
+                    ? 'message-box bg-red-50 border-red-600 text-red-800' 
+                    : 'message-box bg-green-50 border-green-600 text-green-800'; 
+                setTimeout(() => { element.style.display = 'none'; }, 3000); 
+            };
+
+            function sendSmartMessage(message) {
+                if (!smartMessageOutput) return;
+                smartMessageOutput.textContent = `Message sent to driver and co-passengers: "${message}"`;
+                smartMessageOutput.style.display = 'block';
+                setTimeout(() => { smartMessageOutput.style.display = 'none'; }, 3000);
+            }
+
+            function injectProfileMenu(page) {
+                if (!page || page.querySelector('.profile-menu-button')) return; 
+                const menuClone = profileMenuTemplate.cloneNode(true);
+                menuClone.removeAttribute('id');
+                menuClone.classList.remove('hidden');
+                page.prepend(menuClone);
+                addProfileMenuListeners(page);
+            }
+
+            // --- Event Listeners Setup ---
+            function addProfileMenuListeners(page) {
+                page.querySelector('.profile-menu-button')?.addEventListener('click', (e) => { e.stopPropagation(); page.querySelector('.profile-menu-dropdown').classList.toggle('hidden'); });
+                page.querySelector('.profile-btn')?.addEventListener('click', (e) => { e.preventDefault(); showPage('profile-page'); });
+                page.querySelector('.settings-btn')?.addEventListener('click', (e) => { e.preventDefault(); showMessage(menuPageMessageBox, 'Settings will be available in a future version.'); });
+                page.querySelector('.logout-btn')?.addEventListener('click', (e) => { e.preventDefault(); logout(); });
+            }
+            
+            loginForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                if (emailInput.value.trim() !== '' && emailInput.value.includes('@')) {
+                    userProfile = JSON.parse(JSON.stringify(defaultProfile));
+                    userProfile.email = emailInput.value;
+                    userProfile.name = emailInput.value.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    saveData();
+                    initializeApp();
+                } else {
+                    document.getElementById('login-error').textContent = 'Please enter a valid email address.';
+                    document.getElementById('login-error').classList.remove('hidden');
+                }
+            });
+
+            document.getElementById('track-cab-btn').addEventListener('click', () => showPage('app-container'));
+            document.getElementById('my-bookings-btn').addEventListener('click', () => showPage('bookings-page'));
+            document.getElementById('schedule-ride-btn').addEventListener('click', () => showPage('booking-type-page'));
+            document.getElementById('ride-history-btn').addEventListener('click', () => showPage('ride-history-page'));
+            document.getElementById('support-btn').addEventListener('click', () => showPage('support-page'));
+            document.querySelectorAll('.back-to-menu-btn').forEach(btn => btn.addEventListener('click', () => showPage('menu-page')));
+            document.getElementById('shift-booking-btn').addEventListener('click', () => showPage('shift-booking-page'));
+            document.getElementById('adhoc-booking-btn').addEventListener('click', () => { updateAdhocShiftStyling(); showPage('adhoc-booking-page'); });
+            document.querySelectorAll('.back-to-booking-type-btn').forEach(btn => btn.addEventListener('click', () => showPage('booking-type-page')));
+            profileForm.addEventListener('submit', handleProfileFormSubmit);
+            document.getElementById('use-map-btn').addEventListener('click', handleUseMapClick);
+            shiftBookingForm.addEventListener('submit', handleShiftBookingSubmit);
+            adhocBookingForm.addEventListener('submit', handleAdhocBookingSubmit);
+            document.querySelectorAll('input[name="adhoc-shift-type"]').forEach(radio => { radio.addEventListener('change', (e) => { adhocTimeInput.value = e.target.value === 'in' ? '09:00' : '18:00'; updateAdhocShiftStyling(); }); });
+            document.getElementById('add-date-btn').addEventListener('click', handleAddDate);
+            document.getElementById('selected-dates-container').addEventListener('click', handleRemoveDate);
+            document.getElementById('bookings-page').addEventListener('click', handleBookingActions);
+            document.getElementById('edit-booking-form').addEventListener('submit', handleEditBookingSubmit);
+            document.getElementById('close-modal-btn').addEventListener('click', closeEditModal);
+            document.getElementById('confirm-cancel-yes').addEventListener('click', handleConfirmCancel);
+            document.getElementById('confirm-cancel-no').addEventListener('click', closeConfirmCancelModal);
+            document.getElementById('close-location-modal-btn').addEventListener('click', () => locationPickerModal.classList.add('hidden'));
+            document.getElementById('confirm-location-btn').addEventListener('click', handleLocationConfirm);
+            document.getElementById('back-to-dashboard-btn').addEventListener('click', () => showPage('app-container'));
+            document.getElementById('smartMsgLateBtn').addEventListener('click', () => sendSmartMessage("Running 5 mins late."));
+            document.getElementById('smartMsgLocationBtn').addEventListener('click', () => sendSmartMessage("Sharing my live location."));
+            
+            // --- Core Logic Functions ---
+            function logout() {
+                if (confirm("Are you sure you want to logout? Your session data will be cleared.")) {
+                    localStorage.removeItem(`${APP_PREFIX}userProfile`);
+                    localStorage.removeItem(`${APP_PREFIX}userBookings`);
+                    window.location.reload();
+                }
+            }
+            
+            // Profile Page Logic
+            function populateSelect(select, options, selected) { select.innerHTML = ''; options.forEach(item => { const option = document.createElement('option'); option.value = item; option.textContent = item; select.appendChild(option); }); if (selected) select.value = selected; }
+            function updateHomeNodalPoints() { const city = document.getElementById('profile-home-city').value; populateSelect(document.getElementById('profile-home-nodal'), homeNodalPointsData[city] || [], userProfile.home.nodalPoint); }
+            function updateOfficeBuilding() { const city = document.getElementById('profile-office-city').value; populateSelect(document.getElementById('profile-office-building'), officeLocations[city] || [], userProfile.office.building); }
+            function populateProfileForm() {
+                const form = document.getElementById('profile-form');
+                form.querySelector('#profile-name').value = userProfile.name;
+                form.querySelector('#profile-email').value = userProfile.email;
+                form.querySelector('#profile-mobile').value = userProfile.mobile;
+                form.querySelector('#profile-emergency-name').value = userProfile.emergency.name;
+                form.querySelector('#profile-emergency-phone').value = userProfile.emergency.phone;
+                form.querySelector('#profile-home-address').value = userProfile.homeAddress;
+                form.querySelector('#profile-home-map').value = userProfile.homeMapLocation;
+                populateSelect(form.querySelector('#profile-home-city'), Object.keys(homeNodalPointsData), userProfile.home.city);
+                updateHomeNodalPoints();
+                populateSelect(form.querySelector('#profile-office-city'), Object.keys(officeLocations), userProfile.office.city);
+                updateOfficeBuilding();
+            }
+            function handleProfileFormSubmit(e) {
+                e.preventDefault();
+                userProfile.name = document.getElementById('profile-name').value;
+                userProfile.mobile = document.getElementById('profile-mobile').value;
+                userProfile.emergency.name = document.getElementById('profile-emergency-name').value;
+                userProfile.emergency.phone = document.getElementById('profile-emergency-phone').value;
+                userProfile.homeAddress = document.getElementById('profile-home-address').value;
+                userProfile.home.city = document.getElementById('profile-home-city').value;
+                userProfile.home.nodalPoint = document.getElementById('profile-home-nodal').value;
+                userProfile.office.city = document.getElementById('profile-office-city').value;
+                userProfile.office.building = document.getElementById('profile-office-building').value;
+                saveData();
+                showMessage(document.getElementById('profileActionMessageBox'), 'Profile updated successfully!');
+            }
+            
+            function handleUseMapClick() {
+                locationPickerModal.classList.remove('hidden');
+                setTimeout(initLocationPickerMap, 100); // Delay to ensure modal is visible
+            }
+
+            function initLocationPickerMap() {
+                const initialCoords = userProfile.home.coords || [28.4595, 77.0266];
+                if (!locationMap) {
+                    locationMap = L.map('location-picker-map').setView(initialCoords, 14);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    }).addTo(locationMap);
+                    locationMarker = L.marker(initialCoords, {
+                        draggable: true,
+                        icon: L.divIcon({ className: 'custom-icon', html: '📍', iconSize: [30, 30], iconAnchor: [15, 30] })
+                    }).addTo(locationMap);
+                    locationMap.on('click', function(e) {
+                        locationMarker.setLatLng(e.latlng);
+                    });
+                } else {
+                    locationMap.setView(initialCoords, 14);
+                    locationMarker.setLatLng(initialCoords);
+                }
+                locationMap.invalidateSize();
+            }
+
+            async function handleLocationConfirm() {
+                const confirmBtn = document.getElementById('confirm-location-btn');
+                const originalText = confirmBtn.textContent;
+                confirmBtn.textContent = 'Fetching...';
+                confirmBtn.disabled = true;
+
+                const { lat, lng } = locationMarker.getLatLng();
+                const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+
+                try {
+                    const response = await fetch(url);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    const data = await response.json();
+                    
+                    if (data && data.display_name) {
+                        userProfile.home.coords = [lat, lng];
+                        userProfile.homeAddress = data.display_name;
+                        userProfile.homeMapLocation = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+
+                        document.getElementById('profile-home-address').value = data.display_name;
+                        document.getElementById('profile-home-map').value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+                        
+                        saveData();
+                        showMessage(document.getElementById('profileActionMessageBox'), 'Home location updated successfully!');
+                        locationPickerModal.classList.add('hidden');
+                    } else {
+                        throw new Error('Could not find address for this location.');
+                    }
+                } catch (error) {
+                    console.error("Reverse geocoding failed:", error);
+                    showMessage(document.getElementById('profileActionMessageBox'), 'Could not fetch address. Please try another location.', true);
+                } finally {
+                    confirmBtn.textContent = originalText;
+                    confirmBtn.disabled = false;
+                }
+            }
+            
+            // Booking Logic
+            function getNextWeekDateRange() {
+                const formatter = new Intl.DateTimeFormat('en-GB', { month: 'short', day: 'numeric' });
+                const today = new Date('2025-08-04T14:49:00'); // Using a fixed date for consistent demo
+                const dayOfWeek = today.getDay();
+                const daysUntilMonday = dayOfWeek === 0 ? 1 : 8 - dayOfWeek;
+                const nextMonday = new Date(today);
+                nextMonday.setDate(today.getDate() + daysUntilMonday);
+                const nextFriday = new Date(nextMonday);
+                nextFriday.setDate(nextMonday.getDate() + 4);
+                return { start: nextMonday, end: nextFriday, range: `${formatter.format(nextMonday)} - ${formatter.format(nextFriday)}`};
+            }
+            document.getElementById('week-range-display').textContent = getNextWeekDateRange().range;
+            
+            function handleShiftBookingSubmit(e) {
+                e.preventDefault();
+                const { start, end } = getNextWeekDateRange();
+                const shiftInTime = document.getElementById('shift-in-time').value;
+                const shiftOutTime = document.getElementById('shift-out-time').value;
+                
+                userBookings = userBookings.filter(b => b.date < start || b.date > end);
+                
+                for (let i = 0; i < 5; i++) {
+                    const date = new Date(start);
+                    date.setDate(start.getDate() + i);
+                    userBookings.push({ id: crypto.randomUUID(), date, time: shiftInTime, shiftType: 'in' });
+                    userBookings.push({ id: crypto.randomUUID(), date, time: shiftOutTime, shiftType: 'out' });
+                }
+                saveData();
+                showMessage(document.getElementById('shiftActionMessageBox'), 'Weekly schedule confirmed!');
+            }
+            
+            let adhocDates = [];
+            function updateAdhocShiftStyling() {
+                document.querySelectorAll('#adhoc-shift-selector label').forEach(label => {
+                    const radio = label.querySelector('input[name="adhoc-shift-type"]');
+                    label.classList.toggle('bg-blue-600', radio.checked);
+                    label.classList.toggle('text-white', radio.checked);
+                    label.classList.toggle('bg-white', !radio.checked);
+                    label.classList.toggle('text-gray-800', !radio.checked);
+                });
+            }
+
+            function setTodayDateForAdhoc() {
+                const today = new Date();
+                today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+                const todayStr = today.toISOString().slice(0,10);
+                adhocDateInput.min = todayStr;
+                adhocDateInput.value = todayStr;
+            }
+
+            function handleAdhocBookingSubmit(e) {
+                e.preventDefault();
+                if (adhocDates.length === 0) {
+                    showMessage(document.getElementById('adhocActionMessageBox'), 'Please add at least one date before confirming.', true);
+                    return;
+                }
+                const shiftType = document.querySelector('input[name="adhoc-shift-type"]:checked').value;
+                const time = adhocTimeInput.value;
+                adhocDates.forEach(dateStr => {
+                    const date = new Date(dateStr);
+                    userBookings.push({ id: crypto.randomUUID(), date, time, shiftType });
+                });
+                showMessage(document.getElementById('adhocActionMessageBox'), `Booked ${adhocDates.length} ad-hoc ride(s)!`);
+                adhocDates = [];
+                renderAdhocDates();
+                saveData();
+            }
+
+            function renderAdhocDates() {
+                const container = document.getElementById('selected-dates-container');
+                container.innerHTML = '';
+                if (adhocDates.length === 0) {
+                    container.innerHTML = `<p class="text-center text-sm text-gray-500">No dates added yet.</p>`;
+                    return;
+                }
+                adhocDates.sort((a,b) => new Date(a) - new Date(b)).forEach(dateStr => {
+                    const formattedDate = new Date(dateStr).toLocaleDateString('en-GB', {year: 'numeric', month: 'short', day: 'numeric'});
+                    const datePill = document.createElement('div');
+                    datePill.className = 'flex justify-between items-center bg-gray-200 text-gray-800 text-sm font-semibold px-3 py-1 rounded-full';
+                    datePill.innerHTML = `<span>${formattedDate}</span><button type="button" class="ml-2 font-bold text-red-500" data-date="${dateStr}">✖</button>`;
+                    container.appendChild(datePill);
+                });
+            }
+            renderAdhocDates();
+
+            function handleAddDate() {
+                const adhocMsgBox = document.getElementById('adhocActionMessageBox');
+                if (!adhocDateInput.value) {
+                    showMessage(adhocMsgBox, 'Please select a date first.', true);
+                    return;
+                }
+                const selectedDate = new Date(adhocDateInput.value + 'T00:00:00');
+                const today = new Date();
+                today.setHours(0,0,0,0);
+                if (selectedDate < today) {
+                    showMessage(adhocMsgBox, 'Cannot book rides for past dates.', true);
+                    return;
+                }
+                const dateString = adhocDateInput.value;
+                if (!adhocDates.includes(dateString)) {
+                    adhocDates.push(dateString);
+                    renderAdhocDates();
+                } else {
+                    showMessage(adhocMsgBox, 'This date has already been added.', true);
+                }
+                setTodayDateForAdhoc();
+            }
+
+            function handleRemoveDate(e) { if (e.target.tagName === 'BUTTON') { const dateToRemove = e.target.dataset.date; adhocDates = adhocDates.filter(d => d !== dateToRemove); renderAdhocDates(); } }
+
+            // My Bookings Page Logic
+            function renderMyBookings() {
+                const container = document.getElementById('bookings-list-container');
+                container.innerHTML = '';
+                if (userBookings.length === 0) {
+                    container.innerHTML = `<div class="card bg-gray-100 p-4 text-center text-gray-500">No bookings scheduled.</div>`;
+                    return;
+                }
+                userBookings.sort((a, b) => a.date - b.date || a.time.localeCompare(b.time));
+                const groupedByDate = userBookings.reduce((acc, booking) => {
+                    const dateKey = booking.date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+                    if (!acc[dateKey]) acc[dateKey] = [];
+                    acc[dateKey].push(booking);
+                    return acc;
+                }, {});
+
+                for (const dateKey in groupedByDate) {
+                    const dayWrapper = document.createElement('div');
+                    const heading = document.createElement('h3');
+                    heading.className = 'font-bold text-lg mb-2';
+                    heading.textContent = dateKey;
+                    dayWrapper.appendChild(heading);
+                    groupedByDate[dateKey].forEach(booking => {
+                        const time = new Date(`1970-01-01T${booking.time}`).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+                        const shiftClass = booking.shiftType === 'in' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800';
+                        const card = document.createElement('div');
+                        card.className = 'card p-4';
+                        card.innerHTML = `<div class="flex justify-between items-center"><div><p class="font-semibold">${time} <span class="text-xs font-bold py-1 px-2 rounded-full ${shiftClass}">${booking.shiftType === 'in' ? 'Shift In' : 'Shift Out'}</span></p><p class="text-sm text-gray-600">${booking.shiftType === 'in' ? 'Home → Office' : 'Office → Home'}</p></div><div class="flex gap-2"><button data-booking-id="${booking.id}" class="edit-booking-btn text-sm font-semibold text-blue-600 hover:text-blue-800 p-2">Edit</button><button data-booking-id="${booking.id}" class="cancel-booking-btn text-sm font-semibold text-red-600 hover:text-red-800 p-2">Cancel</button></div></div>`;
+                        dayWrapper.appendChild(card);
+                    });
+                    container.appendChild(dayWrapper);
+                }
+            }
+            
+            // Modal and Map Logic
+            let bookingToCancel = null;
+            const routeCoords = [ [28.4965, 77.0885], [28.4950, 77.0870], [28.4925, 77.0845], [28.4890, 77.0810], [28.4855, 77.0770], [28.4810, 77.0740], [28.4760, 77.0715], [28.4720, 77.0725], [28.4710, 77.0760], [28.4690, 77.0820], [28.4670, 77.0880], [28.4640, 77.0940], [28.4610, 77.0980], [28.4570, 77.1020], [28.4530, 77.1050], [28.4480, 77.1070], [28.4430, 77.1060], [28.4390, 77.1030], [28.4345, 77.0995] ];
+            const homeIcon = L.divIcon({ className: 'custom-icon', html: '🏠', iconSize: [30, 30], iconAnchor: [15, 30] });
+            const officeIcon = L.divIcon({ className: 'custom-icon', html: '🏢', iconSize: [30, 30], iconAnchor: [15, 30] });
+            const cabIcon = L.divIcon({ className: 'custom-icon', html: '🚖', iconSize: [30, 30], iconAnchor: [15, 15] });
+
+            function initMapPreview() {
+                if (document.getElementById('map-preview')._leaflet_id) return;
+                mapPreview = L.map('map-preview', { zoomControl: false, attributionControl: false, interactive: false }).setView(userProfile.office.coords, 13);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { 
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' 
+                }).addTo(mapPreview);
+                L.marker(userProfile.office.coords, {icon: officeIcon}).addTo(mapPreview);
+                L.marker(userProfile.home.coords, {icon: homeIcon}).addTo(mapPreview);
+                L.polyline(routeCoords, {color: '#3b82f6', weight: 5, opacity: 0.8}).addTo(mapPreview);
+                cabMarkerPreview = L.marker(userProfile.office.coords, {icon: cabIcon}).addTo(mapPreview);
+
+                const mapContainer = document.getElementById('map-preview-container');
+                let isDragging = false;
+                mapContainer.addEventListener('mousedown', () => { isDragging = false; });
+                mapContainer.addEventListener('mousemove', () => { isDragging = true; });
+                mapContainer.addEventListener('mouseup', () => {
+                    if (!isDragging) {
+                        showPage('live-tracking-page');
+                    }
+                });
+            }
+            
+            function initLiveMap() {
+                if (!document.getElementById('live-map')._leaflet_id) {
+                    liveMap = L.map('live-map').setView(userProfile.office.coords, 14);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    }).addTo(liveMap);
+                    L.marker(userProfile.office.coords, {icon: officeIcon}).addTo(liveMap);
+                    L.marker(userProfile.home.coords, {icon: homeIcon}).addTo(liveMap);
+                    L.polyline(routeCoords, {color: '#3b82f6', weight: 5, opacity: 0.8}).addTo(liveMap);
+                    cabMarkerLive = L.marker(userProfile.office.coords, {icon: cabIcon}).addTo(liveMap);
+                }
+                liveMap.invalidateSize();
+                startCabSimulation();
+            }
+
+            let routeIndex = 0;
+            function startCabSimulation() {
+                stopCabSimulation();
+                routeIndex = 0;
+                simulationInterval = setInterval(() => {
+                    routeIndex = (routeIndex + 1) % routeCoords.length;
+                    const newPos = routeCoords[routeIndex];
+                    if (cabMarkerLive) cabMarkerLive.setLatLng(newPos);
+                    if (liveMap) liveMap.panTo(newPos, { animate: true, duration: 2.0, easeLinearity: 1 });
+                }, 2000);
+            }
+
+            function stopCabSimulation() {
+                if (simulationInterval) {
+                    clearInterval(simulationInterval);
+                    simulationInterval = null;
+                    if (cabMarkerLive && cabMarkerPreview) {
+                        cabMarkerPreview.setLatLng(cabMarkerLive.getLatLng());
+                    }
+                }
+            }
+
+            function openEditModal(bookingId) { const booking = userBookings.find(b => b.id === bookingId); if (!booking) return; document.getElementById('edit-booking-id').value = booking.id; document.getElementById('edit-booking-date').textContent = booking.date.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' }); document.getElementById('edit-booking-shift-type').textContent = booking.shiftType === 'in' ? 'Shift In' : 'Shift Out'; document.getElementById('edit-booking-time').value = booking.time; editModal.classList.remove('hidden'); }
+            function closeEditModal() { editModal.classList.add('hidden'); }
+            function openConfirmCancelModal(bookingId) { bookingToCancel = bookingId; confirmCancelModal.classList.remove('hidden'); }
+            function closeConfirmCancelModal() { bookingToCancel = null; confirmCancelModal.classList.add('hidden'); }
+            
+            function handleEditBookingSubmit(e) {
+                e.preventDefault();
+                const bookingId = document.getElementById('edit-booking-id').value;
+                const newTime = document.getElementById('edit-booking-time').value;
+                const bookingIndex = userBookings.findIndex(b => b.id === bookingId);
+                if (bookingIndex > -1) userBookings[bookingIndex].time = newTime;
+                saveData();
+                closeEditModal();
+                renderMyBookings();
+            }
+
+            function handleConfirmCancel() {
+                if (bookingToCancel) {
+                    userBookings = userBookings.filter(b => b.id !== bookingToCancel);
+                    saveData();
+                    renderMyBookings();
+                }
+                closeConfirmCancelModal();
+            }
+
+            function handleBookingActions(e) {
+                const editBtn = e.target.closest('.edit-booking-btn');
+                if (editBtn) { openEditModal(editBtn.dataset.bookingId); return; }
+                const cancelBtn = e.target.closest('.cancel-booking-btn');
+                if (cancelBtn) { openConfirmCancelModal(cancelBtn.dataset.bookingId); return; }
+            }
+            
+            // --- Initialize Application on Load ---
+            initializeApp();
+        });
+    </script>
+</body>
+</html>
